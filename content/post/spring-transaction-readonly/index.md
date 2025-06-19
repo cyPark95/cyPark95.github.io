@@ -1,6 +1,6 @@
 ---
 title: Spring @Transactional(readOnly = true) 정말 읽기 전용일까?
-description:
+description: Spring 트랜잭션의 read-only 속성이 실제로 어떻게 동작하는지, JDBC 드라이버에 따라 어떻게 다르게 동작하는지 알아본다.
 date: 2025-06-18 00:00:00+0000
 math: true
 categories:
@@ -11,24 +11,10 @@ tags:
   - readOnly
 ---
 
-스프링에서는 `@Transactional(readOnly = true)`를 통해 "읽기 전용 트랜잭션"을 설정할 수 있습니다.<br/>
-하지만 실제로 이 설정이 모든 쓰기 작업을 막아줄까요?
+스프링에서는 `@Transactional(readOnly = true)`를 통해 **읽기 전용 트랜잭션**을 설정할 수 있다.<br/>
+실제로 이 설정이 "쓰기 작업"을 막아줄까?
 
-다음 코드의 테스트 결과는 실패였고, 이유는 예외가 발생하지 않았기 때문이었습니다.
-
-```java
-@SpringBootTest
-class UserServiceTest {
-
-    @Autowired
-    private UserService userService;
-
-    @Test
-    void readOnlyUpdate() {
-        assertThrows(Exception.class, () -> userService.signUpUser());
-    }
-}
-```
+다음 테스트 코드의 결과는 실패였고, 이유는 **예외가 발생하지 않았기 때문**이다.
 
 ```java
 @Service
@@ -41,46 +27,60 @@ class UserService {
     public void allUpgradeLevel() {
         List<User> users = userRepository.findAll();
         for (User user : users) {
-            user.upgradeLevel();        // 상태 변경
-            userRepository.save(user);  // 쓰기 작업
+            user.upgradeLevel();
+            userRepository.save(user);
         }
+    }
+}
+
+@SpringBootTest
+class UserServiceTest {
+
+    @Autowired
+    private UserService userService;
+
+    @Test
+    void readOnlyUpdate() {
+        assertThrows(Exception.class, () -> userService.allUpgradeLevel());
     }
 }
 ```
 
-왜 예외가 발생하지 않았을까요?
+왜 예외가 발생하지 않았을까?
 
-## 스프링의 `@Transactional` 어노테이션
+## 스프링의 `@Transactional` 어노테이션과 `readOnly` 속성
 
-스프링의 `@Transactional` 어노테이션은 프록시 기반의 AOP(Aspect-Oriented Programming)를 사용하여 트랜잭션을 적용하는 기능입니다.<br/>
-메서드 호출을 가로채서 트랜잭션을 시작하고, 정상적으로 끝나면 커밋(commit), 예외가 발생하면 롤백(rollback)하는 방식입니다.
+스프링의 `@Transactional` 어노테이션은 프록시 기반의 AOP(Aspect-Oriented Programming)를 통해 트랜잭션을 적용하는 기능이다.<br/>
+메서드 실행 전/후에 트랜잭션을 시작하고, 정상적으로 끝나면 커밋(commit), 예외가 발생하면 롤백(rollback)하는 방식이다.
 
-트랜잭션 관련 다양한 속성을 제공합니다.
-- propagation 
-- isolation 
-- readOnly 
-- rollbackFor / noRollbackFor 
-- timeout
+`@Transactional` 어노테이션은 트랜잭션 관련 다양한 속성을 제공한다.
+
+- propagation: 트랜잭션 전파 방식
+- isolation: 트랜잭션 격리 수준
+- timeout: 트랜잭션 제한 시간
+- rollbackFor / noRollbackFor: 롤백 예외 지정
+- readOnly: 읽기 전용 트랜잭션 여부
+
+그 중 `readOnly` 속성을 true로 설정하면 **"읽기 전용" 트랜잭션이 실행**된다고 알고 있지만, **실제로 그렇게 강제되지 않는다.**
 
 [Spring 공식 문서](https://docs.spring.io/spring-framework/docs/4.3.x/javadoc-api/org/springframework/transaction/annotation/Transactional.html#readOnly--)
-에서 read-only 속성을 확인해 보니 다음과 같이 명시하고 있었습니다.
+에서는 `readOnly` 속성을 다음과 같이 명시하고 있다.
 
 > This just serves as a hint for the actual transaction subsystem;
 > it will not necessarily cause failure of write access attempts.
 > A transaction manager which cannot interpret the read-only hint will not throw an exception when asked for a read-only
 > transaction but rather silently ignore the hint.
 
-쉽게 말해 `readOnly` 속성은 트랜잭션 서브 시스템에 대한 힌트일 뿐, 쓰기 작업을 강제로 차단하지 않는다고 합니다.
+쉽게 말해, `readOnly = true`는 **힌트**일 뿐, 이를 강제하는 책임은 **트랜잭션 매니저와 JDBC 드라이버에 있다.**
 
-## 스프링의 트랜잭션 흐름
+## 스프링의 트랜잭션 내부 동작
 
-스프링은 JDBC 기반 트랜잭션을 처리할 때 `DataSourceTransactionManager`를 사용합니다. <br/>
-트랜잭션이 시작 지점인 `doBegin()` 메서드이며, 내부적으로 다음과 같은 과정을 수행니다.
+스프링은 `DataSourceTransactionManager`를 통해 JDBC 기반 트랜잭션을 관리한다.<br/>
+트랜잭션이 시작되는 지점은 `doBegin()` 메서드로, `readOnly` 속성은 다음 과정으로 처리된다.
 
-1. 커넥션 획득 
-2. `prepareConnectionForTransaction()` 호출 
-3. `con.setReadOnly(true)` 호출 (readOnly 힌트 전달)
-4. `enforceReadOnly`가 `true`면 `SET TRANSACTION READ ONLY` 실행
+- 커넥션 획득
+- `DataSourceUtils.prepareConnectionForTransaction()` 메서드 내부에서 `Connection.setReadOnly(true)` 메서드를 통해 JDBC 드라이버에 힌트 제공
+- `prepareTransactionalConnection()` 메서드를 통해 읽기 전용 트랜잭션 설정
 
 ```java
 protected void prepareTransactionalConnection(Connection con, TransactionDefinition definition) throws SQLException {
@@ -92,80 +92,37 @@ protected void prepareTransactionalConnection(Connection con, TransactionDefinit
 }
 ```
 
-특이한 점은 `readOnly` 설정 외에도 `enforceReadOnly` 속성을 확인한다는 점이다.
+특이한 점은 `readOnly` 설정 외에도 `enforceReadOnly` 속성을 확인한다는 점이다.<br/>
 
-- `readOnly`만 `true`: 힌트만 전달되며, JDBC 드라이버가 이를 어떻게 처리할지는 알 수 없다.
-- `readOnly`와 `enforceReadOnly` 모두 `true`: 실제 SQL 쿼리로 `SET TRANSACTION READ ONLY`가 실행되어 읽기 전용 모드가 강제된다.
+- `readOnly = true`만으로는 실제 DB 수준에서 읽기 전용 트랜잭션을 강제하지 않는다.
+- `enforceReadOnly = true`를 설정해야만 `SET TRANSACTION READ ONLY` 쿼리가 실행되어 **DB 수준에서 읽기 전용 트랜잭션 강제한다.**
 
-`SET TRANSACTION READ ONLY` 설정을 통해 읽기 전용 모드가 강제되면 이후 제가 실행한, 사용자 레벨 업그레이드와 같은 쓰기 작업이 실행되면 예외가 발생합니다.
-그렇다면 왜 예외가 발생하지 않은걸까요?
+## 스프링은 왜 강제하지 않았을까?
 
-좀 더 자세히 살펴보면 `enforceReadOnly` 필드는 `DataSourceTransactionManage`에서 관리하는 필드입니다.
+스프링의 기본 설계 철학은 **유연함과 호환성**을 제공하는 데 있다.<br/>
+다양한 DB, 다양한 드라이버, 다양한 트랜잭션 매니저에 자율성을 부여할 수 있도록 `readOnly = true`는 단순한 힌트로 처리하고, 강제하고 싶은 경우 개발자가 명시적으로 설정하도록 설계되어 있다.
 
-```java
-public class DataSourceTransactionManager extends AbstractPlatformTransactionManager implements ResourceTransactionManager, InitializingBean {
-
-    // ...
-
-    private boolean enforceReadOnly = false;
-
-    // ...
-
-    @Override
-    protected void doBegin(Object transaction, TransactionDefinition definition) {
-        // ...
-
-        try {
-            // ...
-
-            Integer previousIsolationLevel = DataSourceUtils.prepareConnectionForTransaction(con, definition);
-
-            // ...
-
-            prepareTransactionalConnection(con, definition);
-
-            // ...
-
-        } catch (Throwable ex) {
-            // ...
-        }
-    }
-}
-```
+그래서 등장한 것이 `enforceReadOnly` 속성이다.
 
 ```java
-public abstract class DataSourceUtils {
-
-    // ...
-
-    @Nullable
-    public static Integer prepareConnectionForTransaction(Connection con, @Nullable TransactionDefinition definition) throws SQLException {
-        // ...
-        if (definition != null && definition.isReadOnly()) {
-            try {
-                // ...
-                con.setReadOnly(true);
-            } catch (SQLException | RuntimeException ex) {
-                // ...
-            }
-            // ...
-        }
-        // ...
-
-        return previousIsolationLevel;
-    }
-    // ...
-}
+DataSourceTransactionManager transactionManager = new DataSourceTransactionManager();
+transactionManager.setEnforceReadOnly(true);
 ```
 
-하지만 readOnly 속성은 `Connection` 인터페이스를 통해 관리되고 구현체는 JDBC 드라이버에 존재합니다.
-그렇다면 구현체를 살펴보도록 합니다.
+`enforceReadOnly = true`로 설정해야 `DataSourceTransactionManager`는 내부적으로 쿼리를 실행하여 다음과 같이 실제 DB 수준에서 읽기 전용 트랜잭션을 강제하게
+된다.
+
+## 실제 JDBC 드라이버 동작 비교
+
+스프링에서 전달한 `readOnly` 속성은 결국 JDBC 드라이버가 해석한다.<br/>
+JDBC는 `Connection.setReadOnly(boolean readOnly)` 메서드를 통해 트랜잭션의 읽기 전용 여부를 설정할 수 있도록 인터페이스를 제공한다.
+
+이 메서드는 표준 인터페이스로 정의되어 있지만, **실제 동작은 각 DBMS의 JDBC 드라이버 구현에 따라 달라진다.**
 
 ### H2 Database
 
-저는 테스트 환경에서 H2를 사용하고 있었고, 테스트 실행 시 예외 없이 정상 동작했습니다.
-H2는 `Connection` 인터페이스의 구현체로 `JdbcConnection`을 사용합니다.
-`JdbcConnection`에서 read-only 속성을 설정하는 `setReadOnly()` 메서드를 살펴보면 다음과 같습니다.
+H2에서는 `JdbcConnection`을 통해 `Connection` 인터페이스를 구현한다.<br/>
+`JdbcConnection.setReadOnly()` 메서드는 다음과 같다.
 
 ```java
 
@@ -173,6 +130,7 @@ H2는 `Connection` 인터페이스의 구현체로 `JdbcConnection`을 사용합
 public void setReadOnly(boolean readOnly) throws SQLException {
     try {
         // ...
+
         checkClosed();
     } catch (Exception e) {
         throw logAndConvert(e);
@@ -180,81 +138,60 @@ public void setReadOnly(boolean readOnly) throws SQLException {
 }
 ```
 
-내부적으로 아무런 동작도 하지 않습니다.
-따라서 read-only 속성을 true로 설정해도 `isReadOnly()` 의 결과는 항상 false로,  `SET TRANSACTION READ ONLY`가 실행되지 않고 있습니다.
-그 결과 쓰기 작업이 가능했던 것입니다.
+내부적으로 **아무런 동작도 하지 않는다.**<br/>
+따라서 `readOnly = true`로 설정해도 `SET TRANSACTION READ ONLY` 쿼리가 실행되지 않는다.<br/>
+그 결과 **쓰기 작업이 가능**하며 예외가 발생하지 않는다.
 
 ### MySQL
 
-MySQL로 테스트 해보면 예외가 발생하는 것을확인할 수 있습니다.
-MySQL은 `Connection` 인터페이스의 구현체로 `ConnectionImpl`을 사용합니다.
-`ConnectionImpl`의 `setReadOnly()` 메서드는 다음과 같습니다.
+MySQL을 사용해서 테스트 해보면 `TransientDataAccessResourceException` **예외가 발생하고, 테스트가 성공한다.**
+
+MySQL은 `ConnectionImpl`을 통해 `Connection` 인터페이스를 구현한다.<br/>
+`ConnectionImpl.setReadOnly()` 메서드는 다음과 같다.
 
 ```java
-public class ConnectionImpl implements JdbcConnection, SessionEventListener, Serializable {
-    // ...
 
-    @Override
-    public void setReadOnly(boolean readOnlyFlag) throws SQLException {
-        setReadOnlyInternal(readOnlyFlag);
-    }
+@Override
+public void setReadOnly(boolean readOnlyFlag) throws SQLException {
+    setReadOnlyInternal(readOnlyFlag);
+}
 
-    @Override
-    public void setReadOnlyInternal(boolean readOnlyFlag) throws SQLException {
-        synchronized (getConnectionMutex()) {
-            // ...
+@Override
+public void setReadOnlyInternal(boolean readOnlyFlag) throws SQLException {
+    synchronized (getConnectionMutex()) {
+        // ...
 
-            this.session.execSQL(null, "SET SESSION TRANSACTION " + (readOnlyFlag ? "READ ONLY" : "READ WRITE"), -1, null, false,
-                    this.nullStatementResultSetFactory, null, false);
-            // ...
-            this.readOnly = readOnlyFlag;
-        }
+        this.session.execSQL(null, "SET SESSION TRANSACTION " + (readOnlyFlag ? "READ ONLY" : "READ WRITE"), -1, null, false,
+                this.nullStatementResultSetFactory, null, false);
+        // ...
+
+        this.readOnly = readOnlyFlag;
     }
 }
 ```
 
-`readOnly` 속성에 따라 직접 쿼리를 실행하고 있는것을 확인할 수 있습니다.
+`readOnly = true`로 설정하면 내부적으로 `SET SESSION TRANSACTION READ ONLY` 쿼리가 실행되어 **읽기 전용 모드를 설정한다.**
 
-하지만 이상한 점은 `enforceReadOnly` 속성의 설정 없이 예외가 발생한다는 점입니다.
+또한 `enforceReadOnly` 속성과 상관 없이 **업데이트 쿼리 실행 시점에 예외가 발생한다.**
 
-이전에 스프링의 `DataSourceTransactionManager` 에서 read-only 속성뿐만 아니라 `enforceReadOnly` 속성까지 true인 경우에만 읽기 모드를 강제화 했는데 어떻게 된
-일일까요?
-
-MySQL 드라이버의 update 메서드를 살펴보면 원인을 찾을 수 있습니다.
-MySQL은 `ClientPreparedStatement` 클래스를 통해 쿼리를 실제로 실행합니다.
-실제 쿼리를 실행시키는 `executeUpdateInternal()` 메서드를 살펴보면 다음과 같습니다.
+MySQL은 `ClientPreparedStatement` 클래스를 통해 실제로 쿼리를 실행한다.<br/>
+실제 쿼리를 실행시키는 `executeUpdateInternal()` 메서드는 다음 같다.
 
 ```java
-public class ClientPreparedStatement extends com.mysql.cj.jdbc.StatementImpl implements JdbcPreparedStatement {
-    protected long executeUpdateInternal(String sql, boolean isBatch, boolean returnGeneratedKeys) throws SQLException {
-        synchronized (checkClosed().getConnectionMutex()) {
-            // ...
+protected long executeUpdateInternal(String sql, boolean isBatch, boolean returnGeneratedKeys) throws SQLException {
+    synchronized (checkClosed().getConnectionMutex()) {
+        // ...
 
-            if (locallyScopedConn.isReadOnly(false)) {
-                throw SQLError.createSQLException(Messages.getString("Statement.42") + Messages.getString("Statement.43"),
-                        MysqlErrorNumbers.SQL_STATE_ILLEGAL_ARGUMENT, getExceptionInterceptor());
-            }
-            // ...
-
-            return this.updateCount;
+        if (locallyScopedConn.isReadOnly(false)) {
+            throw SQLError.createSQLException(Messages.getString("Statement.42") + Messages.getString("Statement.43"),
+                    MysqlErrorNumbers.SQL_STATE_ILLEGAL_ARGUMENT, getExceptionInterceptor());
         }
+        // ...
+
+        return this.updateCount;
     }
 }
 ```
 
-MySQL 드라이버는 업데이트 쿼리 실행 시점에 연결 객체의 read-only 상태를 체크하고, 읽기 전용 상태일 경우 예외를 발생시키고 있습니다.
-때문에 H2와 달리 MySQL을 사용할 때는 테스트가 성공할 수 있었던 것입니다.
-
-### 결론: `readOnly = true`의 진짜 의미
-
-`@Transactional(readOnly = true)`는 트랜잭션 서브 시스템에 "읽기 전용일 가능성이 높다."는 힌트를 제공한다.
-스프링은 read-only 속성뿐만 아니라 enforceReadOnly를 통해 읽기 모드를 설정할 수 있는 선택지를 제공하고
-실제로 쓰기 작업을 강제로 막으려면 enforceReadOnly = true도 함께 설정해야 하며, 이것이 JDBC 드라이버에서 제대로 지원돼야 한다.
-H2처럼 이를 무시하는 드라이버도 있으므로, 실제 효과는 DB와 드라이버에 따라 다르다.
-
-### 마무리
-
-개발 중 테스트나 로컬 환경에서 H2를 자주 사용하는데, 이 때문에 readOnly가 기대대로 동작하지 않아 혼란스러울 수 있다.
-이 설정이 정말로 보호막이 되려면, 드라이버의 지원 여부까지 확인하는 습관이 필요하다.
-읽기 전용 트랜잭션을 올바르게 활용하기 위해서는 단순히 `@Transactional(readOnly = true)`만 붙이는 것으로는 부족하다.
-상황에 따라 `enforceReadOnly`와 DB 드라이버의 특성을 고려한 전략이 필요하다.
+MySQL 드라이버는 업데이트 쿼리 실행 시점에 연결 객체의 `readOnly = true` 상태를 체크하고, **읽기 전용 상태일 경우 자체적으로 예외를 발생**시킨다.<br/>
+따라서 MySQL을 사용하면 `readOnly = true` 설정만으로도 **쓰기 작업 시점에 예외가 발생한다.**
