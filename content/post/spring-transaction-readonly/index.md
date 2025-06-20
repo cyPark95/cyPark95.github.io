@@ -1,6 +1,6 @@
 ---
 title: Spring @Transactional(readOnly = true)는 정말 읽기 전용 트랜잭션일까?
-description: Spring 트랜잭션에서 `readOnly = true` 설정이 실제로 읽기 전용 트랜잭션인지, 내부 동작에 대해 알아본다.
+description: Spring 트랜잭션에서 readOnly = true 설정이 실제로 읽기 전용 트랜잭션인지, 내부 동작에 대해 알아본다.
 date: 2025-06-19 00:00:00+0000
 math: true
 categories:
@@ -72,8 +72,7 @@ class UserServiceTest {
 `@Transactional`의 여러 속성 중 `readOnly`를 `true`로 설정하면, 일반적으로 **읽기 전용 트랜잭션**이 실행된다고 알고 있다.<br/>
 하지만 실제로는 이 설정이 **쓰기 작업을 강제적으로 막아주지는 않는다.**
 
-[Spring 공식 문서](https://docs.spring.io/spring-framework/docs/4.3.x/javadoc-api/org/springframework/transaction/annotation/Transactional.html#readOnly--)
-에서도 다음과 같이 명시하고 있다.
+[Spring 공식 Java 문서](https://docs.spring.io/spring-framework/docs/4.3.x/javadoc-api/org/springframework/transaction/annotation/Transactional.html#readOnly--)에서도 다음과 같이 명시하고 있다.
 
 > This just serves as a hint for the actual transaction subsystem;
 > it will not necessarily cause failure of write access attempts.
@@ -88,7 +87,7 @@ class UserServiceTest {
 트랜잭션은 `doBegin()` 메서드에서 시작되며, `readOnly` 속성은 다음 과정을 거쳐 처리된다.
 
 1. 커넥션 획득
-2. `DataSourceUtils.prepareConnectionForTransaction()` 메서드 호출
+2. `DataSourceUtils.prepareConnectionForTransaction()` 메서드를 호출하여 DB연결 준비
     - `Connection.setReadOnly(true)` 메서드를 통해 JDBC 드라이버에 힌트 제공
 3. `prepareTransactionalConnection()` 메서드 호출
     - 읽기 전용 트랜잭션 설정
@@ -124,7 +123,7 @@ DataSourceTransactionManager transactionManager = new DataSourceTransactionManag
 transactionManager.setEnforceReadOnly(true);
 ```
 
-`enforceReadOnly = true`로 설정하면, `DataSourceTransactionManager`는 내부적으로 `SET TRANSACTION READ ONLY` 쿼리를 실행하여 **DB 수준에서 실제로 읽기 전용 트랜잭션을 강제**한.
+`enforceReadOnly = true`로 설정하면, `DataSourceTransactionManager`는 내부적으로 `SET TRANSACTION READ ONLY` 쿼리를 실행하여 **DB 수준에서 실제로 읽기 전용 트랜잭션을 강제**한다.
 
 ## JDBC 드라이버 동작 비교
 
@@ -214,3 +213,8 @@ protected long executeUpdateInternal(String sql, boolean isBatch, boolean return
 - **쓰기 작업이 실제로 차단되는지는 트랜잭션 매니저, JDBC 드라이버, DBMS의 구현 방식에 따라 다르게 동작한다.**
 - 스프링은 설계 철학인 **유연함과 호환성**에 따라, `readOnly` 설정을 단순한 힌트로 처리하고, **강제하고 싶은 경우 `enforceReadOnly` 설정을 통해 명시적으로 적용할 수 있도록**지원한다.
 - 최종적으로는 **JDBC 드라이버가 `readOnly` 속성을 어떻게 해석하느냐에 따라 동작이 결정**되므로, 사용 중인 DB와 드라이버의 구현 방식을 반드시 확인해야 한다.
+
+## 레퍼런스
+
+- [Spring Javadoc: @Transactional](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/transaction/annotation/Transactional.html)
+- [Spring Javadoc: DataSourceTransactionManager](https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/jdbc/datasource/DataSourceTransactionManager.html)
