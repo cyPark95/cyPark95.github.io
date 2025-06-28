@@ -27,8 +27,8 @@ math = false
 readingTime = true
 
 [article.license]
-enabled = true
-default = "Licensed Example"
+enabled = false
+default = "Licensed cyPark95"
 
 ## Widgets
 [[widgets.homepage]]
