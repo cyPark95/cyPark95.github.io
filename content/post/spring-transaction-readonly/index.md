@@ -11,8 +11,6 @@ tags:
   - readOnly
 ---
 
-# Spring @Transactional(readOnly = true)는 정말 읽기 전용 트랜잭션일까?
-
 스프링에서는 `@Transactional(readOnly = true)`를 통해 읽기 전용 트랜잭션을 설정할 수 있다.<br/>
 실제로 이 설정이 "쓰기 작업"을 막아줄까?
 
@@ -23,7 +21,8 @@ tags:
 public void upgradeLevel(long userId) throws SQLException {
     try (
             Connection conn = dataSource.getConnection();
-            PreparedStatement ps = conn.prepareStatement("UPDATE users SET level = level + 1 WHERE id = ?")
+            PreparedStatement ps = conn
+                .prepareStatement("UPDATE users SET level = level + 1 WHERE id = ?")
     ) {
         ps.setLong(1, userId);
         ps.executeUpdate();
@@ -55,7 +54,7 @@ void readOnlyUpdate() {
 
 즉, `readOnly = true`는 단지 **트랜잭션 시스템에 전달되는 힌트**일 뿐이며, 실제로 쓰기 작업을 막을지 여부는 **트랜잭션 매니저와 JDBC 드라이버의 구현에 달려 있다.**
 
-## Spring에서 readOnly를 처리하는 방식
+## Spring에서 readOnly 처리 방식
 
 Spring의 TransactionManager가 `readOnly` 속성을 어떻게 처리하는지 살펴보자.
 
@@ -83,7 +82,7 @@ conn.setReadOnly(true);
 
 표준 JDBC 인터페이스에서 제공하는 `Connection.setReadOnly(boolean readOnly)` 메서드다. 하지만 **이것이 실제로 어떻게 동작할지는 JDBC 드라이버의 구현에 따라 달라진다.**
 
-### DB 레벨에서 읽기 전용을 강제하고 싶다면?
+### DB 레벨 읽기 전용 강제 enforceReadOnly
 
 하지만 JDBC 드라이버에 따라 readOnly의 효과가 달라질 수 있으므로, Spring은 DataSourceTransactionManager에서 `enforceReadOnly` 옵션을 제공한다.
 
@@ -111,7 +110,7 @@ readOnly의 효과가 JDBC 드라이버에 따라 달라질 수 있으므로, Sp
 
 이제 왜 테스트 결과가 다를까를 이해할 수 있다. JDBC 드라이버의 `setReadOnly()` 구현을 비교해보자.
 
-### H2 Database - 왜 테스트가 실패했을까?
+### H2 - 왜 테스트가 실패했을까?
 
 H2의 `JdbcConnection` 클래스에서 `setReadOnly()` 메서드는 다음과 같이 구현되어 있다.
 
@@ -135,7 +134,7 @@ public void setReadOnly(boolean readOnly) throws SQLException {
 - 트랜잭션 내에서 **쓰기 작업이 수행되어도 예외가 발생하지 않음**
 - 따라서 테스트가 실패함
 
-### MySQL Connector/J - 왜 테스트가 성공할까?
+### MySQL - 왜 테스트가 성공할까?
 
 MySQL의 `ConnectionImpl` 클래스에서 `setReadOnly()` 메서드는 다음과 같이 구현되어 있다.
 
@@ -191,7 +190,7 @@ protected long executeUpdateInternal(String sql, boolean isBatch, boolean return
 
 같은 JDBC 메서드를 호출하지만, 드라이버 구현에 따라 완전히 다른 결과가 나타난다.
 
-## JPA/Hibernate에서 readOnly는 어떻게 동작할까?
+## JPA/Hibernate에서의 readOnly 동작
 
 이제 JDBC 드라이버의 구현 차이를 알아봤으니, 그렇다면 JPA/Hibernate에서는 어떻게 처리하고 있는지 살펴보자.
 
