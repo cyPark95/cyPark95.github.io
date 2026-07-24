@@ -6,6 +6,7 @@ p {
   margin: 0.75rem;
 }
 
-.sidebar {
-  width: 25%;
+// Hide widget icon in TOC sidebar
+aside .widget.archives .widget-icon {
+  display: none;
 }
