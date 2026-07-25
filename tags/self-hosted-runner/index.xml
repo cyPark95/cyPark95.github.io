@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Self-Hosted-Runner on cyPark95's Blog</title><link>https://cypark95.github.io/tags/self-hosted-runner/</link><description>Recent content in Self-Hosted-Runner on cyPark95's Blog</description><generator>Hugo -- gohugo.io</generator><language>en-us</language><lastBuildDate>Sun, 27 Jul 2025 00:00:00 +0000</lastBuildDate><atom:link href="https://cypark95.github.io/tags/self-hosted-runner/index.xml" rel="self" type="application/rss+xml"/><item><title>GitHub Actions Self-Hosted Runner란? 개념부터 설정까지</title><link>https://cypark95.github.io/p/github-actions-self-hosted-runner%EB%9E%80-%EA%B0%9C%EB%85%90%EB%B6%80%ED%84%B0-%EC%84%A4%EC%A0%95%EA%B9%8C%EC%A7%80/</link><pubDate>Sun, 27 Jul 2025 00:00:00 +0000</pubDate><guid>https://cypark95.github.io/p/github-actions-self-hosted-runner%EB%9E%80-%EA%B0%9C%EB%85%90%EB%B6%80%ED%84%B0-%EC%84%A4%EC%A0%95%EA%B9%8C%EC%A7%80/</guid><description>&lt;p&gt;GitHub Actions 기반의 CI/CD를 구현할 때, 가상 머신의 IP는 매번 변경된다.&lt;br/&gt;
+이로 인해 내부 인프라에 서버를 두고 있는 환경에서는 특정 IP에 대한 인바운드 규칙을 설정할 수 없고, 모든 IP에 대한 인바운드를 허용해야 하는 문제가 발생한다.&lt;/p&gt;
+&lt;p&gt;이 글에서는 이러한 제약을 해결할 수 있는 방법으로 &lt;strong&gt;Self-Hosted Runner의 개념과 동작 원리&lt;/strong&gt;, 그리고 &lt;strong&gt;실제 설정 방법&lt;/strong&gt;을 알아본다.&lt;/p&gt;
+&lt;h2 id="github-actions란"&gt;GitHub Actions란?
+&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;GitHub Actions&lt;/strong&gt;는 GitHub에서 제공하는 CI/CD 플랫폼으로, Repository에 이벤트가 발생하면 미리 작성된 Workflow를 통해 자동으로 빌드·테스트·배포 등의 작업을 실행할 수 있다.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;다양한 이벤트 기반 실행 (push, PR, cron 등)&lt;/li&gt;
+&lt;li&gt;Ubuntu, Windows, macOS 등 여러 가상 머신 제공&lt;/li&gt;
+&lt;li&gt;&lt;a class="link" href="https://github.com/marketplace?type=actions" target="_blank" rel="noopener"
+&gt;GitHub Marketplace&lt;/a&gt;에서 제공하는 액션 재사용 가능&lt;/li&gt;
+&lt;li&gt;GitHub의 Issues, PR 등과 연동&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;즉, GitHub Actions는 &lt;strong&gt;개발과 배포 과정 전체를 자동화&lt;/strong&gt;하는 플랫폼이다.&lt;/p&gt;
+&lt;h3 id="구성-요소"&gt;구성 요소
+&lt;/h3&gt;&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;Workflow&lt;/strong&gt;: 하나 이상의 작업을 실행하는 자동화 프로세스&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Event&lt;/strong&gt;: Workflow를 실행시키는 트리거&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Job&lt;/strong&gt;: Workflow 안에서 실행되는 작업 단위 (병렬/순차 실행 가능)&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Action&lt;/strong&gt;: 미리 정의하여 재사용 가능한 작업&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;Runner&lt;/strong&gt;: Workflow가 실제로 실행되는 환경
+&lt;ul&gt;
+&lt;li&gt;GitHub이 제공하는 &lt;strong&gt;GitHub-Hosted Runner&lt;/strong&gt;&lt;/li&gt;
+&lt;li&gt;사용자가 직접 운영하는 &lt;strong&gt;Self-Hosted Runner&lt;/strong&gt;&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="github-hosted-runner란"&gt;GitHub-Hosted Runner란?
+&lt;/h3&gt;&lt;p&gt;GitHub Actions에서 Workflow를 실행하려면 &lt;strong&gt;Runner&lt;/strong&gt;라는 실행 환경이 필요하다.&lt;br/&gt;
+&lt;strong&gt;GitHub-Hosted Runner&lt;/strong&gt;는 GitHub이 제공하는 클라우드 VM에서 Workflow를 실행하는 Runner다.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;매번 새로운 VM에서 실행되므로 서버 관리가 필요 없고, 독립적인 환경이 보장된다.&lt;/li&gt;
+&lt;li&gt;환경 커스터마이징에는 제한이 있고, 캐시 활용에 한계가 있으며, 매번 다른 VM에서 실행되므로 고정된 IP를 보장하지 않는다.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="self-hosted-runner란"&gt;Self-Hosted Runner란?
+&lt;/h2&gt;&lt;p&gt;&lt;strong&gt;Self-Hosted Runner&lt;/strong&gt;는 GitHub이 아닌 사용자가 직접 준비한 서버(온프레미스, 클라우드 VM, 컨테이너 등)에 Runner 프로그램을 설치하여 Workflow를 실행하는 방식이다.&lt;br/&gt;
+GitHub은 이 Runner에게 실행할 Job을 전달하기만 하고, 실제 실행은 사용자가 관리하는 머신에서 이루어진다.&lt;br/&gt;
+즉, 실행 주체는 GitHub가 아니라 사용자가 관리하는 머신이다.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;서버 사양, 설치된 소프트웨어, 네트워크 환경 등을 자유롭게 커스터마이징할 수 있다.&lt;/li&gt;
+&lt;li&gt;내부 인프라(사내망, VPN 등)에 있는 리소스에 직접 접근할 수 있다.&lt;/li&gt;
+&lt;li&gt;고정된 IP를 가지므로, 인바운드 규칙을 특정 IP로 제한할 수 있다.&lt;/li&gt;
+&lt;li&gt;Runner 자체의 보안·업데이트·장애 대응을 사용자가 직접 책임져야 한다.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h3 id="동작-원리"&gt;동작 원리
+&lt;/h3&gt;&lt;p&gt;Self-Hosted Runner의 핵심은 &lt;strong&gt;Runner가 GitHub에 접속하는 방향&lt;/strong&gt;에 있다.&lt;br/&gt;
+Runner는 GitHub 서버에 인바운드로 열려있는 포트를 통해 연결을 받는 것이 아니라, Runner 프로그램이 주기적으로 GitHub Actions 서버에 &lt;strong&gt;아웃바운드로 접속&lt;/strong&gt;(polling)하여 실행할 Job이 있는지 확인한다.&lt;/p&gt;
+&lt;ol&gt;
+&lt;li&gt;Runner를 Repository에 등록하면, GitHub은 해당 Runner의 정보를 저장한다.&lt;/li&gt;
+&lt;li&gt;Runner는 자신이 설치된 머신에서 GitHub Actions 서버로 지속적으로 연결을 유지하며 새로운 Job을 대기한다.&lt;/li&gt;
+&lt;li&gt;Workflow가 트리거되어 실행 대상 Runner로 이 Self-Hosted Runner가 지정되면, GitHub은 대기 중이던 연결을 통해 Job을 전달한다.&lt;/li&gt;
+&lt;li&gt;Runner는 전달받은 Job을 로컬 환경에서 실행하고, 결과를 다시 GitHub에 보고한다.&lt;/li&gt;
+&lt;/ol&gt;
+&lt;p&gt;이 방식 덕분에 내부 인프라에 있는 서버는 &lt;strong&gt;외부에서 접근 가능한 포트를 별도로 열어둘 필요가 없다.&lt;/strong&gt;&lt;br/&gt;
+Runner가 항상 먼저 GitHub 쪽으로 연결을 시작하기 때문에, 앞서 언급한 &amp;ldquo;GitHub-Hosted Runner의 IP가 매번 바뀌어 인바운드 규칙을 특정할 수 없는 문제&amp;quot;를 근본적으로 우회할 수 있다.&lt;/p&gt;
+&lt;h2 id="self-hosted-runner-적용하기"&gt;Self-Hosted Runner 적용하기
+&lt;/h2&gt;&lt;p&gt;Self-Hosted Runner를 실제로 등록하고 워크플로우에서 사용하는 과정은 다음과 같다.&lt;/p&gt;
+&lt;h3 id="1-runner-다운로드-및-등록"&gt;1. Runner 다운로드 및 등록
+&lt;/h3&gt;&lt;p&gt;Repository 설정의 &lt;code&gt;Settings &amp;gt; Actions &amp;gt; Runners &amp;gt; New self-hosted runner&lt;/code&gt;로 이동하면, OS에 맞는 설치 스크립트를 안내해준다.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt;1
+&lt;/span&gt;&lt;span class="lnt"&gt;2
+&lt;/span&gt;&lt;span class="lnt"&gt;3
+&lt;/span&gt;&lt;span class="lnt"&gt;4
+&lt;/span&gt;&lt;span class="lnt"&gt;5
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;$ mkdir actions-runner &lt;span class="o"&gt;&amp;amp;&amp;amp;&lt;/span&gt; &lt;span class="nb"&gt;cd&lt;/span&gt; actions-runner
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;$ curl -o actions-runner-osx-x64-2.336.0.tar.gz -L https://github.com/actions/runner/releases/download/v2.336.0/actions-runner-osx-x64-2.336.0.tar.gz
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;$ tar xzf ./actions-runner-osx-x64-2.336.0.tar.gz
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;압축을 풀고 나면, &lt;code&gt;config.sh&lt;/code&gt;로 이 Runner를 Repository에 등록하고 실행한다.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt;1
+&lt;/span&gt;&lt;span class="lnt"&gt;2
+&lt;/span&gt;&lt;span class="lnt"&gt;3
+&lt;/span&gt;&lt;span class="lnt"&gt;4
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-bash" data-lang="bash"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c1"&gt;# Runner 등록 및 설정 마법사 실행&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;$ ./config.sh --url https://github.com/&lt;span class="o"&gt;{&lt;/span&gt;owner&lt;span class="o"&gt;}&lt;/span&gt;/&lt;span class="o"&gt;{&lt;/span&gt;repo&lt;span class="o"&gt;}&lt;/span&gt; --token &lt;span class="o"&gt;{&lt;/span&gt;TOKEN&lt;span class="o"&gt;}&lt;/span&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;$ ./run.sh
+&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;code&gt;--token&lt;/code&gt;은 GitHub에서 발급하는 일회성 등록 토큰으로, 해당 Runner를 어떤 Repository에 연결할지를 결정한다.&lt;br/&gt;
+&lt;code&gt;config.sh&lt;/code&gt; 과정에서 Runner의 이름과 커스텀 라벨(예: &lt;code&gt;deploy&lt;/code&gt;)을 지정할 수 있다.&lt;/p&gt;
+&lt;h3 id="2-상태-확인"&gt;2. 상태 확인
+&lt;/h3&gt;&lt;p&gt;Runner가 정상적으로 등록되어 GitHub과 연결되어 있는지는 Repository 설정의 &lt;code&gt;Settings &amp;gt; Actions &amp;gt; Runners&lt;/code&gt;에서 확인할 수 있다.&lt;br/&gt;
+Job을 받을 준비가 된 상태면 &lt;strong&gt;Idle&lt;/strong&gt;, Job을 실행 중이면 &lt;strong&gt;Active&lt;/strong&gt;, 연결이 끊겼다면 &lt;strong&gt;Offline&lt;/strong&gt;으로 표시된다.&lt;/p&gt;
+&lt;h3 id="3-workflow에서-지정"&gt;3. Workflow에서 지정
+&lt;/h3&gt;&lt;p&gt;등록이 끝나면 GitHub은 Workflow에 다음 한 줄만 추가하면 된다고 안내한다.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt;1
+&lt;/span&gt;&lt;span class="lnt"&gt;2
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-yaml" data-lang="yaml"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="c"&gt;# Job을 Self-Hosted Runner에서 실행하도록 지정&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;runs-on&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;self-hosted&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;p&gt;&lt;code&gt;self-hosted&lt;/code&gt;는 등록된 모든 Self-Hosted Runner를 의미하고, 라벨을 추가하면 특정 Runner만 선택할 수 있다.&lt;br/&gt;
+&lt;code&gt;runs-on&lt;/code&gt;에 &lt;code&gt;self-hosted&lt;/code&gt;를 지정하면 해당 Job은 GitHub-Hosted Runner 대신 등록해둔 Runner에서 실행되며, 등록 시 지정한 커스텀 라벨(예: &lt;code&gt;deploy&lt;/code&gt;)을 함께 명시하면 그 라벨을 가진 Runner로 Job을 한정할 수 있다.&lt;/p&gt;
+&lt;div class="highlight"&gt;&lt;div class="chroma"&gt;
+&lt;table class="lntable"&gt;&lt;tr&gt;&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code&gt;&lt;span class="lnt"&gt;1
+&lt;/span&gt;&lt;span class="lnt"&gt;2
+&lt;/span&gt;&lt;span class="lnt"&gt;3
+&lt;/span&gt;&lt;span class="lnt"&gt;4
+&lt;/span&gt;&lt;span class="lnt"&gt;5
+&lt;/span&gt;&lt;span class="lnt"&gt;6
+&lt;/span&gt;&lt;span class="lnt"&gt;7
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;
+&lt;td class="lntd"&gt;
+&lt;pre tabindex="0" class="chroma"&gt;&lt;code class="language-yaml" data-lang="yaml"&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="nt"&gt;jobs&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;deploy&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;runs-on&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="p"&gt;[&lt;/span&gt;&lt;span class="l"&gt;self-hosted, deploy]&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;steps&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;- &lt;span class="nt"&gt;uses&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;actions/checkout@v4&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;- &lt;span class="nt"&gt;name&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;Deploy&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;span class="line"&gt;&lt;span class="cl"&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="nt"&gt;run&lt;/span&gt;&lt;span class="p"&gt;:&lt;/span&gt;&lt;span class="w"&gt; &lt;/span&gt;&lt;span class="l"&gt;./deploy.sh&lt;/span&gt;&lt;span class="w"&gt;
+&lt;/span&gt;&lt;/span&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;
+&lt;/div&gt;
+&lt;/div&gt;&lt;h2 id="한계와-주의할-점"&gt;한계와 주의할 점
+&lt;/h2&gt;&lt;p&gt;Self-Hosted Runner가 인바운드 문제는 해결해주지만, 그 대신 떠안아야 하는 부담도 있다.&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;strong&gt;보안 위험&lt;/strong&gt;: Public 저장소에 Self-Hosted Runner를 연결하면, 외부에서 올린 PR의 코드가 이 Runner에서 그대로 실행될 수 있다. GitHub도 Runner 등록 화면에서 이를 명시적으로 경고하며, Private 저장소나 승인된 워크플로우에서만 사용하는 것을 권장한다.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;운영 부담&lt;/strong&gt;: GitHub-Hosted Runner와 달리 OS 패치, Runner 버전 업데이트, 디스크·리소스 관리를 직접 해야 한다.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;격리 부족&lt;/strong&gt;: GitHub-Hosted Runner는 Job마다 새로운 VM을 할당하지만, Self-Hosted Runner는 기본적으로 같은 머신을 재사용하므로 이전 Job의 파일이나 프로세스가 남아 다음 Job에 영향을 줄 수 있다. Job마다 격리된 실행 환경(Docker 컨테이너 등)을 별도로 구성해야 한다.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;확장 한계&lt;/strong&gt;: Job이 몰려도 GitHub-Hosted Runner처럼 자동으로 VM이 늘어나지 않는다. 동시에 처리할 수 있는 Job 수는 등록해둔 Runner 대수에 그대로 묶인다.&lt;/li&gt;
+&lt;li&gt;&lt;strong&gt;장애 위험&lt;/strong&gt;: Runner가 설치된 서버가 다운되거나 네트워크가 끊기면, 그 Runner에 할당된 Job은 대기하거나 실패한다.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="정리"&gt;정리
+&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;GitHub-Hosted Runner는 매번 다른 VM에서 실행되어 고정된 IP를 보장하지 않으므로, 온프레미스 방화벽에서 특정 IP로 인바운드 규칙을 제한할 수 없다.&lt;/li&gt;
+&lt;li&gt;Self-Hosted Runner는 Runner가 GitHub에 아웃바운드로 접속하는 구조이기 때문에, 별도의 인바운드 규칙 없이도 내부 인프라를 대상으로 한 CI/CD를 구성할 수 있다.&lt;/li&gt;
+&lt;li&gt;Runner 등록과 Workflow에서의 라벨 지정만으로 온프레미스 환경을 대상으로 하는 CI/CD 파이프라인을 구축할 수 있다.&lt;/li&gt;
+&lt;li&gt;다만 이는 방화벽 문제를 해결하는 대신 보안·운영 부담을 직접 떠안는 선택이므로, 앞서 살펴본 한계를 감수할 수 있는 환경인지 먼저 판단해야 한다.&lt;/li&gt;
+&lt;/ul&gt;
+&lt;h2 id="레퍼런스"&gt;레퍼런스
+&lt;/h2&gt;&lt;ul&gt;
+&lt;li&gt;&lt;a class="link" href="https://docs.github.com/ko/actions" target="_blank" rel="noopener"
+&gt;GitHub Actions&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</description></item></channel></rss>
