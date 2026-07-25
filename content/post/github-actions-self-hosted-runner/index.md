@@ -1,8 +1,7 @@
 ---
 title: GitHub Actions Self-Hosted Runner란? 개념부터 설정까지
-description: GitHub Actions Self-Hosted Runner의 개념과 동작 원리, GitHub-Hosted Runner와의 차이점, 온프레미스 환경에서의 설정 방법을 알아본다.
+description: GitHub Actions Self-Hosted Runner의 동작 원리와 설정 방법을 알아본다.
 date: 2025-07-27 00:00:00+0000
-math: true
 categories:
   - DevOps
 tags:
@@ -45,7 +44,7 @@ GitHub Actions에서 Workflow를 실행하려면 **Runner**라는 실행 환경�
 - 매번 새로운 VM에서 실행되므로 서버 관리가 필요 없고, 독립적인 환경이 보장된다.
 - 환경 커스터마이징에는 제한이 있고, 캐시 활용에 한계가 있으며, 매번 다른 VM에서 실행되므로 고정된 IP를 보장하지 않는다.
 
-### Self-Hosted Runner란?
+## Self-Hosted Runner란?
 
 **Self-Hosted Runner**는 GitHub이 아닌 사용자가 직접 준비한 서버(온프레미스, 클라우드 VM, 컨테이너 등)에 Runner 프로그램을 설치하여 Workflow를 실행하는 방식이다.<br/>
 GitHub은 이 Runner에게 실행할 Job을 전달하기만 하고, 실제 실행은 사용자가 관리하는 머신에서 이루어진다.<br/>
@@ -59,7 +58,7 @@ GitHub은 이 Runner에게 실행할 Job을 전달하기만 하고, 실제 실�
 ### 동작 원리
 
 Self-Hosted Runner의 핵심은 **Runner가 GitHub에 접속하는 방향**에 있다.<br/>
-Runner는 GitHub 서버에 인바운드로 열려있는 포트를 통해 연결을 받는 것이 아니라, Runner 프로그램이 주기적으로 GitHub Actions 서버에 **아웃바운드로 접속(polling)**하여 실행할 Job이 있는지 확인한다.
+Runner는 GitHub 서버에 인바운드로 열려있는 포트를 통해 연결을 받는 것이 아니라, Runner 프로그램이 주기적으로 GitHub Actions 서버에 **아웃바운드로 접속**(polling)하여 실행할 Job이 있는지 확인한다.
 
 1. Runner를 Repository에 등록하면, GitHub은 해당 Runner의 정보를 저장한다.
 2. Runner는 자신이 설치된 머신에서 GitHub Actions 서버로 지속적으로 연결을 유지하며 새로운 Job을 대기한다.
